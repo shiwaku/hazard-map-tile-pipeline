@@ -9,6 +9,7 @@ STEP_NAME="02_prepare"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 load_config "${1:-}"
 require_cmd ogr2ogr ogrinfo
+resolve_src_encoding
 
 value_field="$(decision value_field)"
 value_kind="$(decision value_kind)"
@@ -29,12 +30,12 @@ else
   value_expr="\"$value_field\" AS _value"
 fi
 
-rm -f "$OUT_GPKG"
-first=1
-count=0
+feature_count() {
+  ogrinfo -so -al "$OUT_GPKG" "$LAYER" 2>/dev/null | awk '/Feature Count/{print $3}'
+}
 
 convert_one() {
-  local src="$1" layer_name="$2" makevalid="$3"
+  local src="$1" layer_name="$2" makevalid="$3" first="$4"
   local -a cmd=(ogr2ogr -f GPKG)
   [[ $first -eq 1 ]] || cmd+=(-update -append)
   cmd+=(
@@ -51,39 +52,59 @@ convert_one() {
   "${cmd[@]}"
 }
 
-while IFS= read -r -d '' src; do
-  layer_name="$(basename "${src%.*}")"
-  # GPKG / GeoJSON はレイヤ名がファイル名と一致しないことがあるので実際の名前を引く
-  actual="$(ogrinfo -q "$src" 2>/dev/null | head -1 | sed 's/^[0-9]*: //; s/ (.*//')"
-  [[ -n "$actual" ]] && layer_name="$actual"
+# 入力をすべて 1 つの GPKG にまとめる。-makevalid の有無はデータセット全体で
+# 揃える（ファイルごとに切り替えると、失敗した append の残骸と正常分の区別が
+# つかず二重登録になりうる）。やり直すときは GPKG ごと作り直す。
+#
+# 戻り値: 0=成功 / 1=ogr2ogr が失敗 / 2=全件落ちた
+convert_all() {
+  local makevalid="$1"
+  local first=1 count=0 before after added src layer_name actual
 
-  log "変換: $(basename "$src") (レイヤ: $layer_name)"
-  before=0
-  [[ $first -eq 0 ]] && before="$(ogrinfo -so -al "$OUT_GPKG" "$LAYER" | awk '/Feature Count/{print $3}')"
+  rm -f "$OUT_GPKG"
+  while IFS= read -r -d '' src; do
+    layer_name="$(basename "${src%.*}")"
+    # GPKG / GeoJSON はレイヤ名がファイル名と一致しないことがあるので実際の名前を引く
+    actual="$(ogrinfo -q "$src" 2>/dev/null | head -1 | sed 's/^[0-9]*: //; s/ (.*//')"
+    [[ -n "$actual" ]] && layer_name="$actual"
 
-  if ! convert_one "$src" "$layer_name" "$MAKEVALID"; then
-    die "ogr2ogr が失敗した: $src"
-  fi
+    log "変換: $(basename "$src") (レイヤ: $layer_name)"
+    before=0
+    [[ $first -eq 0 ]] && before="$(feature_count)"
 
-  after="$(ogrinfo -so -al "$OUT_GPKG" "$LAYER" | awk '/Feature Count/{print $3}')"
-  added=$(( after - before ))
+    convert_one "$src" "$layer_name" "$makevalid" "$first" || return 1
 
-  # -makevalid は無効ジオメトリを直せるが、全件落とすことがある。
-  # 0 件になったら -makevalid 無しでやり直す。
-  if [[ "$MAKEVALID" == "true" && "$added" -eq 0 ]]; then
-    warn "-makevalid で全件落ちた。-makevalid 無しで再試行する: $(basename "$src")"
-    convert_one "$src" "$layer_name" "false"
-    after="$(ogrinfo -so -al "$OUT_GPKG" "$LAYER" | awk '/Feature Count/{print $3}')"
+    after="$(feature_count)"
     added=$(( after - before ))
-    [[ "$added" -gt 0 ]] || die "再試行しても 0 件: $src"
-  fi
+    [[ "$added" -gt 0 ]] || return 2
 
-  log "  → $added 件追加（累計 $after 件）"
-  first=0
-  count=$(( count + 1 ))
-done < <(list_inputs "$SRC_DIR" "$SRC_PATTERN")
+    log "  → $added 件追加（累計 $after 件）"
+    first=0
+    count=$(( count + 1 ))
+  done < <(list_inputs "$SRC_DIR" "$SRC_PATTERN")
 
-[[ $count -gt 0 ]] || die "入力が 1 件も無い: $SRC_DIR"
+  [[ $count -gt 0 ]] || die "入力が 1 件も無い: $SRC_DIR"
+  CONVERTED_FILES=$count
+  return 0
+}
 
-total="$(ogrinfo -so -al "$OUT_GPKG" "$LAYER" | awk '/Feature Count/{print $3}')"
+# -makevalid は無効ジオメトリを直せる一方で、全件落とすことも、例外で
+# ogr2ogr ごと落ちることもある（後者は石川県の MAXALL で実際に踏んだ。
+# 閉じていないリングが混ざっており GEOS が IllegalArgumentException を投げる）。
+# どちらの壊れ方でも -makevalid 無しに戻して通す。
+rc=0
+convert_all "$MAKEVALID" || rc=$?
+if [[ $rc -ne 0 ]]; then
+  [[ "$MAKEVALID" == "true" ]] || die "ogr2ogr が失敗した（-makevalid は使っていない）: $SRC_DIR"
+  case $rc in
+    1) warn "-makevalid で ogr2ogr が失敗した。-makevalid 無しでやり直す" ;;
+    2) warn "-makevalid で全件落ちた。-makevalid 無しでやり直す" ;;
+  esac
+  rc=0
+  convert_all "false" || rc=$?
+  [[ $rc -eq 0 ]] || die "-makevalid 無しでも変換できなかった: $SRC_DIR"
+fi
+
+count="$CONVERTED_FILES"
+total="$(feature_count)"
 log "完了: $OUT_GPKG（$count ファイル / $total フィーチャ）"
