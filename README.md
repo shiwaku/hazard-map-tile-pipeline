@@ -10,6 +10,9 @@
 - メッシュサイズを頂点座標の間隔から実測し、**最大ズームレベルを自動決定**する
 - 生成したタイルが仕様に適合しているかを検証するツールを同梱する
 
+**デモ: https://shiwaku.github.io/hazard-map-tile-pipeline/**
+（同梱サンプル 4 構成。`main` に push するたびに CI がパイプラインを通して作り直している）
+
 ## 出力形式は入力データの性質で決まる
 
 これがこのパイプラインの中心にある考え方。災害種別（洪水・津波・高潮）ではなく、
@@ -84,6 +87,33 @@ cd viewer && npm ci && npm run build && cd ..
 ./scripts/run_pipeline.sh config/sample.conf --from 3          # ラスタライズ以降
 ./scripts/run_pipeline.sh config/sample.conf --from 2 --to 4
 ```
+
+## 公開（GitHub Pages）
+
+https://shiwaku.github.io/hazard-map-tile-pipeline/
+
+`.github/workflows/pages.yml` が `main` への push のたびに、同梱サンプル 4 構成で
+Step 0〜5 を通し、生成物を Pages にデプロイする。**タイルはリポジトリに置かない。**
+`output/` はテストデータであって配布物ではないので、毎回 CI で作り直している。
+デモの公開とパイプラインの end-to-end 確認を 1 本で兼ねる形になっていて、
+`validate_tiles.py` が落ちればデプロイもされない。
+
+公開されるのはタイルとビューワだけで、`inspect/`（検査レポート）と
+`work/`（中間ラスター）は含めない。この切り分けは `build_site.sh` がやる:
+
+```bash
+cd viewer && npm ci && npm run build && cd ..
+./scripts/build_site.sh              # → _site/（公開されるのと同じ中身）
+```
+
+`serve.sh` がローカル確認用に `output/` 直下へビューワを置く（中間ファイルもそのまま
+残る）のに対して、`build_site.sh` は公開物だけを別ディレクトリに組み立てる。
+Pages はプロジェクトページなので `/hazard-map-tile-pipeline/` 配下に載るが、
+ビューワは `base: './'` とタイルの相対URLで動くため、サブパスでもそのまま動く。
+
+CI は国土数値情報（`nlftp.mlit.go.jp`）と福島県サイトから ZIP を取りに行く。
+**唯一の外部依存はここで、配信元の URL が変わればビルドが落ちる。**
+落ちた場合はデプロイされないだけで、前回公開分はそのまま残る。
 
 ## パイプラインの構成
 
@@ -340,6 +370,8 @@ res(z) = 156543.033928 × cos(φ) / 2^z   [m/px]
 
 ```
 .
+├── .github/workflows/
+│   └── pages.yml             … 同梱サンプルを通して GitHub Pages に公開する CI
 ├── colors/                   … ランク定義（値・しきい値・配色・出典）
 ├── config/
 │   ├── sample.conf.example                 … 設定テンプレート
@@ -354,6 +386,7 @@ res(z) = 156543.033928 × cos(φ) / 2^z   [m/px]
 │   ├── 01_inspect.sh … 05_make_metadata.sh
 │   ├── run_pipeline.sh  … Step 1〜5 の一括実行（--from / --to）
 │   ├── serve.sh         … ローカルプレビュー
+│   ├── build_site.sh    … 公開用サイトの組み立て（_site/）
 │   └── lib/common.sh    … 設定ロード・既定値・ログ
 ├── tools/
 │   ├── inspect_inputs.py  … 入力検査・auto 値の解決

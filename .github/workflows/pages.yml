@@ -1,0 +1,108 @@
+# 同梱サンプル（すべて公開データ）で Step 0〜5 を通し、生成したタイルとビューワを
+# GitHub Pages に公開する。
+#
+# output/ はテストデータなのでリポジトリには持たず、毎回ここで作り直す。
+# つまりこのワークフローはデモの公開と、パイプラインの end-to-end 確認を兼ねている。
+# 外部サイト（国土数値情報・福島県）からのダウンロードに依存するので、
+# 配信元の URL が変わればここで落ちる。落ちた場合はデプロイされないだけで、
+# 前回公開分はそのまま残る。
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# デプロイに必要な最小限。checkout は読めれば足りる。
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 公開は 1 本ずつ。走行中のデプロイは中断しない（途中で止めると公開物が壊れる）。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # 公開する同梱サンプル。config/*.conf.example をそのまま使う。
+      # sample.conf.example は雛形（DATASET_ID が空）なので含めない。
+      DATASETS: >-
+        ksj-flood-ujigawa
+        ksj-duration-ujigawa
+        fukushima-depth-numeric
+        fukushima-depth-palette
+    steps:
+      - uses: actions/checkout@v4
+
+      # gdal-bin: ogr2ogr / gdal_rasterize / gdalwarp / gdaldem / gdal2tiles.py
+      # python3-gdal: tools/*.py が使う osgeo バインディング
+      # numpy: encode_numeric.py と validate_tiles.py / pil: validate_tiles.py
+      - name: GDAL と Python の依存を入れる
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gdal-bin python3-gdal python3-numpy python3-pil
+
+      # 手元（GDAL 3.11 系）と CI（Ubuntu 同梱）ではバージョンが違う。
+      # 出力が変わったときに切り分けられるよう、必ずログに残す。
+      - name: バージョンを記録する
+        run: |
+          gdalinfo --version
+          python3 -c "from osgeo import gdal; import numpy, PIL; print(f'osgeo {gdal.__version__} / numpy {numpy.__version__} / Pillow {PIL.__version__}')"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+
+      # config/*.conf は .gitignore 済み（案件ごとの設定を持ち込まないため）。
+      # 同梱サンプルは *.conf.example がそのまま通るので、コピーして使う。
+      - name: 設定を用意する
+        run: |
+          for d in $DATASETS; do cp "config/$d.conf.example" "config/$d.conf"; done
+
+      # ZIP は data/_zip/ にキャッシュされるので、同じ ZIP を使う ksj の 2 構成でも
+      # ダウンロードは 1 回で済む。
+      - name: サンプルデータを取得する
+        run: |
+          for d in $DATASETS; do ./scripts/00_fetch_data.sh "config/$d.conf"; done
+
+      - name: パイプラインを通す
+        run: |
+          for d in $DATASETS; do ./scripts/run_pipeline.sh "config/$d.conf"; done
+
+      # 仕様違反は目視では気づけない（下位ZLの中間色など）。落ちたら公開しない。
+      - name: 仕様適合を検証する
+        run: |
+          for d in $DATASETS; do python3 tools/validate_tiles.py "output/$d/tiles"; done
+
+      # build は tsc --noEmit も走らせるので、型エラーもここで止まる
+      - name: ビューワをビルドする
+        working-directory: viewer
+        run: |
+          npm ci
+          npm run build
+
+      # inspect/ と work/ を除いた公開物だけを _site/ に集める
+      - name: サイトを組み立てる
+        run: ./scripts/build_site.sh _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

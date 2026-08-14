@@ -24,6 +24,10 @@
   公開データを根拠として一般論の形で記述する。
 - `data/` と `output/` は `.gitignore` 済み。案件ごとの設定 `config/*.conf` も
   コミット対象外（`config/*.conf.example` のみ管理）。
+- **`config/*.conf.example` に足した構成は GitHub Pages で全世界に公開される。**
+  CI（`.github/workflows/pages.yml`）が `DATASETS` に並べた構成をパイプラインに通し、
+  生成タイルを Pages にデプロイするため。案件データを example に書かないこと。
+  公開したくない構成は `DATASETS` に入れない。
 
 ## 構成
 
@@ -33,6 +37,8 @@
 | `scripts/01_inspect.sh` … `05_make_metadata.sh` | 各ステップ。第1引数に設定ファイルを取る |
 | `scripts/run_pipeline.sh` | Step 1〜5 の一括実行（`--from N` / `--to N`） |
 | `scripts/serve.sh` | ローカルプレビュー（`viewer/index.html` を配信） |
+| `scripts/build_site.sh` | 公開用サイトの組み立て（`_site/`）。タイルとビューワだけを集める |
+| `.github/workflows/pages.yml` | 同梱サンプルを通して GitHub Pages に公開する CI |
 | `scripts/lib/common.sh` | 設定ロード・既定値・ログ・依存チェック・入力列挙 |
 | `tools/inspect_inputs.py` | 入力検査・`auto` 値の解決（stdlib + `osgeo`） |
 | `tools/rankdef.py` | ランク定義 → カラーマップ / 凡例JSON / 分類SQL（stdlib のみ） |
