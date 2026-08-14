@@ -7,6 +7,9 @@ data/*
 output/*
 !output/.gitkeep
 
+# 公開用サイト（build_site.sh の組み立て先。output/ と viewer/dist の複製）
+_site/
+
 # 案件ごとの設定（実体はコミットしない。example のみ管理）
 config/*.conf
 !config/*.conf.example
