@@ -1,0 +1,63 @@
+# 設定サンプル。cp して config/<name>.conf として使う（*.conf は gitignore）。
+# 値が "auto" のものは Step 1 が実データから判定する。判定根拠は
+# output/<DATASET_ID>/inspect/report.md に残るので、鵜呑みにせず確認してから流すこと。
+
+# ---- 必須 -------------------------------------------------------------------
+
+DATASET_ID="sample"                 # 出力先 output/<DATASET_ID>/
+SRC_DIR="data/sample"               # 入力ディレクトリ（リポジトリルートからの相対可）
+
+# ---- 入力の絞り込み ----------------------------------------------------------
+
+SRC_PATTERN=""                      # ファイル名にこの文字列を含むものだけ処理する
+
+# ---- 入力の解釈（auto で自動判定） -------------------------------------------
+
+SRC_SRS="auto"                      # 例: EPSG:6668 / EPSG:2451
+VALUE_FIELD="auto"                  # ランクまたは浸水深が入っている属性名
+VALUE_KIND="auto"                   # rank | depth | auto
+MESH_SIZE="auto"                    # メッシュ1辺のメートル数。例: 5 / 10
+
+# ---- 出力タイル --------------------------------------------------------------
+
+# TILE_TYPE は入力の性質で決まる。
+#   VALUE_KIND=rank  → palette 固定（ランクから実数は復元できないので numeric は選べない）
+#   VALUE_KIND=depth → palette / numeric のどちらでも可。auto の既定は numeric
+TILE_TYPE="auto"
+
+# パレットPNGのときに使うランク定義（配色としきい値）。colors/ を参照。
+RANK_DEF=""
+
+# 数値PNGのときの係数とオフセット。v = f * (2^16 r' + 2^8 g + b) + o
+# f=0.01 なら cm 単位で保持する意味になる（地理院標高タイルと同じ）。
+NUM_FACTOR=0.01
+NUM_OFFSET=0
+NUM_UNIT="m"
+
+# ---- ズームレベル ------------------------------------------------------------
+
+MIN_ZOOM=9
+MAX_ZOOM="auto"                     # auto = ネイティブZL + MAX_ZOOM_MARGIN（上限 MAX_ZOOM_CAP）
+MAX_ZOOM_MARGIN=3                   # メッシュ1辺が約 2^MARGIN px になる
+MAX_ZOOM_CAP=18
+
+# ---- 処理オプション ----------------------------------------------------------
+
+UPSCALE=2                           # ラスタライズ後の nearest 拡大倍率
+TILE_RESAMPLING="near"              # 下位ZLの縮小方法。原則 near のまま（README 参照）
+TILE_FORMAT="png"
+MAKEVALID="true"                    # 無効ジオメトリを ogr2ogr -makevalid で直す
+PROCESSES=8
+RESUME="false"
+
+# ---- メタデータ --------------------------------------------------------------
+
+TILE_URL=""                         # 省略時は ./{z}/{x}/{y}.png
+DESCRIPTION=""
+ATTRIBUTION=""
+
+# ---- サンプルデータの取得（Step 0。任意） ------------------------------------
+
+FETCH_URL=""
+FETCH_CONTAINS=""                   # ZIP 内のこの文字列を含むエントリだけ展開
+FETCH_FLATTEN="false"

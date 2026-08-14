@@ -1,0 +1,19 @@
+{
+  "id": "water-depth-6rank",
+  "title": "浸水深",
+  "unit": "m",
+  "kind": "rank",
+  "nodata_rank": 0,
+  "source": [
+    "国土数値情報 浸水ランクコード (water_depth_code) — ランク値の定義",
+    "洪水浸水想定区域図作成マニュアル（第4版）2017.10.6 図-7.2-1 — 標準配色"
+  ],
+  "ranks": [
+    { "rank": 1, "title": "0〜0.5m未満",    "min": 0.0,  "max": 0.5,  "rgb": [247, 245, 169], "description": "一般的な住宅において床下程度の浸水" },
+    { "rank": 2, "title": "0.5〜3.0m未満",  "min": 0.5,  "max": 3.0,  "rgb": [255, 216, 192], "description": "床上から1階が浸水" },
+    { "rank": 3, "title": "3.0〜5.0m未満",  "min": 3.0,  "max": 5.0,  "rgb": [255, 183, 183], "description": "2階部分が浸水" },
+    { "rank": 4, "title": "5.0〜10.0m未満", "min": 5.0,  "max": 10.0, "rgb": [255, 145, 145], "description": "2階部分が水没" },
+    { "rank": 5, "title": "10.0〜20.0m未満","min": 10.0, "max": 20.0, "rgb": [242, 133, 201], "description": "" },
+    { "rank": 6, "title": "20.0m以上",      "min": 20.0, "max": null, "rgb": [220, 122, 220], "description": "" }
+  ]
+}

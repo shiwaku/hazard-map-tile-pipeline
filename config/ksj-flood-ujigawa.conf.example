@@ -1,0 +1,37 @@
+# 例1: 離散ランク → パレットPNG
+#
+# 国土数値情報「洪水浸水想定区域データ（河川単位）」2025年度版（A31a）。
+# 高知県の宇治川（河川コード 8808040069）の想定最大規模。
+# 浸水深は A31a_205 に浸水ランクコード（1〜6）で入っており、実数値は持たない。
+# したがって出力はパレットPNGに限られる。
+#
+# ライセンス: CC BY 4.0（国土数値情報ダウンロードサイト コンテンツ利用規約）
+# 出典URL: https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-A31a-2025.html
+
+DATASET_ID="ksj-flood-ujigawa"
+SRC_DIR="data/ksj-flood-ujigawa"
+
+# 都道府県ZIPには複数河川・複数データ種別が入っている。
+# 種別ごとに属性名が違う（想定最大規模=A31a_205 / 浸水継続時間=A31a_305 /
+# 家屋倒壊等氾濫想定区域=A31a_405）ので、1データセット＝1種別に絞ること。
+# A31a-20-... が想定最大規模。
+SRC_PATTERN="A31a-20-25_39_8808040069"
+
+SRC_SRS="auto"                      # → EPSG:6668（入力に埋め込み済み）
+VALUE_FIELD="auto"                  # → A31a_205
+VALUE_KIND="auto"                   # → rank
+TILE_TYPE="auto"                    # → palette
+MESH_SIZE="auto"                    # → 5mメッシュ（頂点間隔 経度0.225″×緯度0.15″）
+
+RANK_DEF="colors/water-depth-6rank.json"
+
+MIN_ZOOM=9
+MAX_ZOOM="auto"                     # → 18
+
+DESCRIPTION="洪水浸水想定区域（想定最大規模）宇治川 — 浸水深ランクのパレットPNGタイル"
+ATTRIBUTION="国土数値情報 洪水浸水想定区域データ（国土交通省, CC BY 4.0）"
+
+# Step 0 でこの ZIP を取得し、河川コードに一致するファイルだけ展開する
+FETCH_URL="https://nlftp.mlit.go.jp/ksj/gml/data/A31a/A31a-25/A31a-25_39_10_SHP.zip"
+FETCH_CONTAINS="8808040069"
+FETCH_FLATTEN="false"

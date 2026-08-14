@@ -1,0 +1,25 @@
+# 例2: 同じ河川の別種別（浸水継続時間）— ランク定義を差し替えるだけ
+#
+# 国土数値情報 A31a の浸水継続時間（A31a_305）。ランクコード 1〜7 で、
+# 浸水深とは意味も配色も別の定義を使う。データの取得元は例1と同じ ZIP なので
+# SRC_DIR を共有し、SRC_PATTERN と RANK_DEF だけを変える。
+
+DATASET_ID="ksj-duration-ujigawa"
+SRC_DIR="data/ksj-flood-ujigawa"
+SRC_PATTERN="A31a-30-25_39_8808040069"     # A31a-30-... が浸水継続時間
+
+SRC_SRS="auto"
+VALUE_FIELD="auto"                          # → A31a_305
+VALUE_KIND="auto"                           # → rank
+TILE_TYPE="auto"                            # → palette
+
+RANK_DEF="colors/flood-duration-7rank.json"
+
+MIN_ZOOM=9
+MAX_ZOOM="auto"
+
+DESCRIPTION="浸水継続時間（想定最大規模）宇治川 — 継続時間ランクのパレットPNGタイル"
+ATTRIBUTION="国土数値情報 洪水浸水想定区域データ（国土交通省, CC BY 4.0）"
+
+FETCH_URL="https://nlftp.mlit.go.jp/ksj/gml/data/A31a/A31a-25/A31a-25_39_10_SHP.zip"
+FETCH_CONTAINS="8808040069"

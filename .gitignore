@@ -1,0 +1,21 @@
+# 入力データ（公開サンプルデータのみを置く。リポジトリには含めない）
+data/*
+!data/.gitkeep
+!data/README.md
+
+# 中間・出力（タイル・GeoTIFF・VRT・レポート）
+output/*
+!output/.gitkeep
+
+# 案件ごとの設定（実体はコミットしない。example のみ管理）
+config/*.conf
+!config/*.conf.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
