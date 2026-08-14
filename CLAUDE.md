@@ -9,6 +9,8 @@
 
 姉妹リポジトリ: [aerial-photo-tile-pipeline](https://github.com/shiwaku/aerial-photo-tile-pipeline)（航空写真版）。
 スクリプト構成・設定ファイル方式・`auto` 解決の考え方はそちらに揃えている。
+`viewer/` は [mlit-urban-planning-converter](https://github.com/shiwaku/mlit-urban-planning-converter)
+のビューワ（Vite + TypeScript）を土台に、レイヤー部分だけラスタータイル用に差し替えたもの。
 
 詳細な使い方・設計判断は `README.md` を参照。
 
@@ -38,7 +40,11 @@
 | `tools/make_metadata.py` | tiles.json / legend.json（stdlib のみ） |
 | `tools/validate_tiles.py` | 生成タイルの仕様適合検証（Pillow + numpy） |
 | `tools/fetch_data.py` | ZIP 取得と CP932 ファイル名の展開（stdlib のみ） |
+| `tools/make_dataset_index.py` | output/ を走査して datasets.json を作る（stdlib のみ） |
 | `colors/*.json` | ランク定義。値・しきい値・配色・出典を 1 か所にまとめる |
+| `viewer/src/layers.ts` | タイルセットの読込・凡例・画素→値の復号。**ここがラスタ用の差し替え部分** |
+| `viewer/src/main.ts` | 地図・UI・クリックでの画素読み取り |
+| `viewer/src/{basemap,theme}.ts`, `pale-style.json`, `style.css` | 土台からほぼそのまま流用 |
 
 ## 設計上の決めごと
 
@@ -111,6 +117,29 @@
 - **国土数値情報の ZIP はエントリごとに文字コードが混在する。** 汎用フラグ bit 11 を
   見て、立っていなければ CP437 → CP932 で読み直す。ZIP 全体で一括判定すると落ちる
   （A31a-25_39_10_SHP.zip で実際に遭遇）。
+
+## ビューワ実装の決めごと
+
+- **タイルURLテンプレートの解決に `new URL()` を使わない。** `{z}` が `%7Bz%7D` に
+  パーセントエンコードされ、以降の置換が一致せず全タイルが 404 になる（実際に踏んだ）。
+  `resolveTemplate()` が文字列連結で解決する。
+- **Service Worker の `controllerchange` で無条件に reload しない。** 初回訪問では
+  「未制御 → activate」で必ず一度発火するため、初回に必ずページが読み直される。
+  そのとき URL には `hash: true` が書いたハッシュが付いているので、
+  「URL で位置指定が無い初回だけデータ範囲に合わせる」判定が壊れる（実際に踏んだ）。
+  `navigator.serviceWorker.controller` の有無を先に見て、本当の更新時だけ reload する。
+- **`fitBounds` は `duration: 0`。** アニメーション中に hashchange が割り込むと戻される。
+- **`HAD_HASH` は Map 生成前に控える。** `hash: true` の Map は初期化直後に自分で
+  ハッシュを書くため。なお esbuild が単一参照の const をインライン展開して評価順を
+  ずらすことは無い（ビルド結果で確認済み）。
+- **タイルの 404 は無効値として扱う。** `gdal2tiles -x` で完全透明タイルを出力しない
+  ため、404 は「取得失敗」ではなく「その範囲に値が無い」を意味する。
+- **ラスターは `raster-resampling: 'nearest'` 固定。** 画素値が意味を持つので補間しない。
+- **背景の「地図」は PMTiles 配信。** 地理院 最適化ベクトルタイルが
+  `pmtiles://` なので、ハザードタイル自体は XYZ ラスターでも
+  `maplibregl.addProtocol('pmtiles', ...)` の登録が必要（外すと背景が出ない）。
+- ビューワを変更したら Playwright 等で実際に描画とクリック読み取りを確認すること。
+  タイルURLの不整合は「地図は出るがオーバーレイだけ出ない」形で静かに壊れる。
 
 ## 開発時の注意
 

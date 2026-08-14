@@ -45,6 +45,9 @@
 | numpy | 数値PNGの符号化 | `python3 -c "import numpy"` |
 | Pillow | タイル検証（`validate_tiles.py`）のみ | `python3 -c "import PIL"` |
 | bash 4+ | スクリプト実行 | — |
+| Node.js 18+ ＋ npm | ビューワ（`viewer/`）のビルドのみ | `node -v` |
+
+タイル生成だけならブラウザ用のビューワは不要で、Node.js も要らない。
 
 ## 使い方
 
@@ -65,9 +68,15 @@ cp config/ksj-flood-ujigawa.conf.example config/ksj-flood-ujigawa.conf
 # 5. 仕様適合を検証
 python3 tools/validate_tiles.py output/ksj-flood-ujigawa/tiles
 
-# 6. ローカルで確認（クリックすると画素値から浸水深／ランクを読み取る）
-./scripts/serve.sh config/ksj-flood-ujigawa.conf    # http://localhost:8080/
+# 6. ローカルで確認（初回だけビューワのビルドが必要）
+cd viewer && npm ci && npm run build && cd ..
+./scripts/serve.sh                                  # http://localhost:8080/
 ```
+
+`serve.sh` は `output/` 以下の**全タイルセット**を一覧に出すので、設定ファイルは取らない。
+ビューワ開発中は `cd viewer && npm run dev`（http://localhost:8000/）のほうが速い。
+`output/` を `/data` として直接読むのでコピーも要らず、パイプラインを回してリロードすれば
+新しいタイルセットが一覧に出る。
 
 途中からやり直す場合:
 
@@ -99,6 +108,9 @@ data/<id>/*.shp | *.geojson
   │                            出力: output/<id>/tiles/{z}/{x}/{y}.png
   │
   └─ Step 5  05_make_metadata.sh  tiles.json（TileJSON）＋ legend.json（JSON凡例）
+                                  出力: output/<id>/tiles/{tiles.json,legend.json}
+
+（ビューワ）serve.sh が output/datasets.json を作り、viewer/dist を output/ に配置
 ```
 
 各ステップは独立して実行でき、`config/<name>.conf` を第 1 引数に取る。
@@ -245,6 +257,42 @@ res(z) = 156543.033928 × cos(φ) / 2^z   [m/px]
 | `colors/water-depth-8rank.json` | 浸水深 8 ランク（詳細版） | 同マニュアル 図-7.2-2 / 表-7.2 |
 | `colors/flood-duration-7rank.json` | 浸水継続時間 7 ランク | 国土数値情報 浸水継続時間ランクコード ＋ 同マニュアル 表-7.4 |
 
+## ビューワ
+
+`viewer/` は MapLibre GL JS の Vite アプリ。姉妹リポジトリ
+[aerial-photo-tile-pipeline](https://github.com/shiwaku/aerial-photo-tile-pipeline) ではなく、
+[mlit-urban-planning-converter](https://github.com/shiwaku/mlit-urban-planning-converter) の
+ビューワを土台にして、レイヤー部分をラスタータイル用に差し替えている。
+
+- `output/` 以下の全タイルセットを 1 レイヤーずつ並べる（`datasets.json` から自動列挙）
+- **クリックした地点のタイル画素を読んで値に戻す**。パレットPNGは色から
+  `legend.json` の凡例項目を引き、数値PNGは RGB から実数を復号する
+- レイヤーごとの ON/OFF・不透明度・凡例・「この範囲へ」
+- 背景は 国土地理院 最適化ベクトルタイル（淡色）／全国最新写真 を切替
+- ライト／ダークテーマ（淡色スタイルは明度を反転してダーク化）
+- PWA（オフラインキャッシュはしない。常に最新を取る Service Worker）
+- `?debug` で診断 HUD
+
+ラスタータイルには属性を持つ地物が無いので、ベクトル版の
+`queryRenderedFeatures` によるハイライトは使えない。代わりに読み取った画素の位置に
+点を打ち、値はタイル画像から直接取り出す。この「画素から値を引く」処理が
+グリッドPNGタイル仕様の使い方そのものなので、ビューワが仕様の動作確認も兼ねる。
+
+### 実装で踏んだ落とし穴
+
+- **`new URL('./{z}/{x}/{y}.png', base)` は使えない。** 中括弧が `%7Bz%7D` に
+  パーセントエンコードされ、以降の `{z}` 置換が一致せず全タイルが 404 になる。
+  `resolveTemplate()` で文字列連結して解決している。
+- **Service Worker の `controllerchange` で無条件に reload してはいけない。**
+  初回訪問では「未制御 → activate」で必ず一度発火するため、初回に必ずページが
+  読み直される。そのとき URL には `hash: true` が書いたハッシュが付いているので、
+  「URL で位置指定が無い初回だけデータ範囲に合わせる」判定が壊れる。
+  `navigator.serviceWorker.controller` の有無を先に見て、本当の更新時だけ reload する。
+- **`fitBounds` は `duration: 0` で呼ぶ。** アニメーション中に `hash: true` の
+  hashchange が割り込むと元の位置へ戻されることがある。
+- **タイルの 404 は「取得失敗」ではなく「値が無い」。** このパイプラインは
+  `gdal2tiles -x` で完全透明タイルを出力しないため、404 は無効値として扱う。
+
 ## 仕様への適合
 
 産総研「グリッドPNGタイル 仕様」(0.1, 2020-12-15) に沿う。
@@ -292,8 +340,18 @@ res(z) = 156543.033928 × cos(φ) / 2^z   [m/px]
 │   ├── encode_numeric.py  … 実数値ラスター → 数値PNG の RGBA
 │   ├── make_metadata.py   … tiles.json / legend.json
 │   ├── validate_tiles.py  … 生成タイルの仕様適合検証
+│   ├── make_dataset_index.py … output/ を走査して datasets.json を作る
 │   └── fetch_data.py      … ZIP の取得と CP932 ファイル名の展開
-└── viewer/index.html      … MapLibre プレビュー（クリックで画素値から値を読む）
+└── viewer/                … MapLibre ビューワ（Vite + TypeScript）
+    ├── src/
+    │   ├── main.ts        … 地図・UI・クリックでの画素読み取り
+    │   ├── layers.ts      … タイルセットの読込・凡例・画素→値の復号
+    │   ├── basemap.ts     … 背景地図（淡色／写真、ダーク化）
+    │   ├── theme.ts       … ライト／ダークの保存と適用
+    │   ├── pale-style.json… 地理院 最適化ベクトルタイルのスタイル
+    │   └── style.css
+    ├── public/            … PWA マニフェスト・Service Worker・アイコン
+    └── vite.config.ts     … dev で output/ を /data として配信する
 ```
 
 ## サンプルデータの出典
@@ -317,6 +375,8 @@ res(z) = 156543.033928 × cos(φ) / 2^z   [m/px]
 - [aerial-photo-tile-pipeline](https://github.com/shiwaku/aerial-photo-tile-pipeline)
   … 航空写真（正射画像）から XYZ ラスタータイルを生成するパイプライン。
   スクリプト構成・設定ファイル方式・`auto` 解決の考え方を揃えている。
+- [mlit-urban-planning-converter](https://github.com/shiwaku/mlit-urban-planning-converter)
+  … 都市計画決定GISデータのビューワ。`viewer/` はこちらを土台にしている。
 
 ## 参考
 

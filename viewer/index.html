@@ -1,165 +1,62 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ハザードマップタイル プレビュー</title>
-<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
-<style>
-  html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
-  #map { position: absolute; inset: 0; }
-  #panel {
-    position: absolute; top: 10px; left: 10px; z-index: 1;
-    background: rgba(255,255,255,.94); padding: 12px 14px; border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0,0,0,.2); max-width: 340px; font-size: 13px;
-    max-height: calc(100% - 40px); overflow: auto;
-  }
-  #panel h1 { font-size: 14px; margin: 0 0 6px; }
-  #panel .meta { color: #555; font-size: 12px; line-height: 1.5; }
-  #legend { margin-top: 10px; }
-  #legend div { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
-  #legend i { width: 18px; height: 12px; display: inline-block; border: 1px solid #999; }
-  #readout {
-    margin-top: 10px; padding: 8px; background: #f3f4f6; border-radius: 5px;
-    font-size: 12px; line-height: 1.6;
-  }
-  #opacity { width: 100%; margin-top: 8px; }
-  code { background: #eee; padding: 1px 4px; border-radius: 3px; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>ハザードマップタイルビューワ</title>
+  <meta name="description" content="浸水想定区域のパレットPNG / 数値PNG タイルを表示し、クリックで画素値から浸水深・ランクを読み取るビューワ" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#2a78d6" />
+  <link rel="icon" type="image/png" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ハザードタイル" />
 </head>
 <body>
-<div id="map"></div>
-<div id="panel">
-  <h1 id="title">読み込み中…</h1>
-  <div class="meta" id="meta"></div>
-  <input type="range" id="opacity" min="0" max="100" value="80" title="不透明度">
-  <div id="legend"></div>
-  <div id="readout">地図をクリックすると、その地点のタイル画素から値を読み取ります。</div>
-</div>
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script>
-const TILEJSON = './tiles/tiles.json';
+  <div id="map"></div>
 
-// タイル画素を読むための小さなキャッシュ付きローダ
-const imgCache = new Map();
-function loadTile(url) {
-  if (imgCache.has(url)) return imgCache.get(url);
-  const p = new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
-  imgCache.set(url, p);
-  return p;
-}
+  <section id="panel" class="panel" aria-label="コントロールパネル">
+    <header class="panel-head">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">🌊</span>
+        <h1>ハザードタイルビューワ</h1>
+      </div>
+      <div class="head-actions">
+        <button id="theme-btn" class="icon-btn" type="button" title="テーマ切替" aria-label="テーマ切替"></button>
+        <button id="collapse-btn" class="icon-btn" type="button" title="パネル開閉" aria-label="パネル開閉"></button>
+      </div>
+    </header>
 
-// 緯度経度 → タイル座標（グリッドPNGタイルの解説にある式と同じ）
-function lngLatToTile(lng, lat, z) {
-  const w = Math.pow(2, z) / 2;
-  const yrad = Math.log(Math.tan(Math.PI * (90 + lat) / 360));
-  return { x: (lng / 180 + 1) * w, y: (1 - yrad / Math.PI) * w };
-}
+    <div id="panel-body" class="panel-body">
+      <div id="status" class="status" hidden></div>
 
-async function readPixel(tmpl, lng, lat, z) {
-  const p = lngLatToTile(lng, lat, z);
-  const x = Math.floor(p.x), y = Math.floor(p.y);
-  const i = Math.floor((p.x - x) * 256), j = Math.floor((p.y - y) * 256);
-  const url = tmpl.replace('{z}', z).replace('{x}', x).replace('{y}', y);
-  const img = await loadTile(url);
-  if (!img) return null;
-  const c = document.createElement('canvas');
-  c.width = c.height = 1;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(img, i, j, 1, 1, 0, 0, 1, 1);
-  const d = ctx.getImageData(0, 0, 1, 1).data;
-  return { r: d[0], g: d[1], b: d[2], a: d[3], z, x, y, i, j };
-}
+      <div class="field">
+        <div class="field-head">
+          <span class="field-label">タイルセット</span>
+          <div class="field-actions">
+            <button id="all-on" class="mini-btn" type="button">全ON</button>
+            <button id="all-off" class="mini-btn" type="button">全OFF</button>
+          </div>
+        </div>
+        <div id="layers" class="toggles"></div>
+      </div>
 
-(async function () {
-  const tj = await (await fetch(TILEJSON)).json();
-  const dp = tj.datapng || {};
-  const tmpl = tj.tiles[0].replace(/^\.\//, './tiles/');
+      <p class="hint">
+        地図をクリックすると、その地点のタイル画素から値を読み取ります。<br />
+        パレットPNGは色から凡例項目を、数値PNGは RGB から実数を復元します。
+      </p>
+    </div>
 
-  document.getElementById('title').textContent = tj.name;
-  document.getElementById('meta').innerHTML = [
-    tj.description || '',
-    `<br>種別: <code>${dp.tile_type || '?'}</code>`,
-    ` / 元データ: <code>${dp.value_kind || '?'}</code>`,
-    ` (<code>${dp.value_field || '?'}</code>)`,
-    `<br>メッシュ: ${dp.mesh || '—'} / ZL ${tj.minzoom}–${tj.maxzoom}`,
-    tj.attribution ? `<br>出典: ${tj.attribution}` : '',
-  ].join('');
+    <footer class="panel-foot">
+      タイルは <a href="https://github.com/shiwaku/hazard-map-tile-pipeline" target="_blank" rel="noopener">hazard-map-tile-pipeline</a> で生成<br />
+      仕様: 産総研 <a href="https://gsj-seamless.jp/labs/datapng/gridpngtileSpec.html" target="_blank" rel="noopener">グリッドPNGタイル</a><br />
+      背景: 国土地理院 最適化ベクトルタイル / 全国最新写真<br />
+      <span id="build-ver" class="build-ver"></span>
+    </footer>
+  </section>
 
-  let legend = null;
-  if (dp.tile_type === 'palette') {
-    legend = await (await fetch('./tiles/legend.json')).json();
-    const items = legend.items || legend;
-    document.getElementById('legend').innerHTML =
-      items.map(it => `<div><i style="background:rgb(${it.r},${it.g},${it.b})"></i>${it.title}</div>`).join('');
-  } else if (dp.numeric) {
-    document.getElementById('legend').innerHTML =
-      `<div class="meta">数値PNG: v = ${dp.numeric.factor} × (2¹⁶r' + 2⁸g + b) + ${dp.numeric.offset}` +
-      ` [${dp.numeric.unit}]<br>値域 ${dp.numeric.value_min?.toFixed(2)} 〜 ${dp.numeric.value_max?.toFixed(2)}</div>`;
-  }
-
-  const map = new maplibregl.Map({
-    container: 'map',
-    style: {
-      version: 8,
-      sources: {
-        gsi: {
-          type: 'raster',
-          tiles: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'],
-          tileSize: 256, maxzoom: 18,
-          attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a>',
-        },
-        hazard: {
-          type: 'raster', tiles: [tmpl], tileSize: 256,
-          minzoom: tj.minzoom, maxzoom: tj.maxzoom,
-          bounds: tj.bounds, attribution: tj.attribution || '',
-        },
-      },
-      layers: [
-        { id: 'gsi', type: 'raster', source: 'gsi' },
-        { id: 'hazard', type: 'raster', source: 'hazard',
-          paint: { 'raster-opacity': 0.8, 'raster-resampling': 'nearest' } },
-      ],
-    },
-    center: [tj.center[0], tj.center[1]],
-    zoom: Math.min(tj.maxzoom - 3, 14),
-  });
-  map.addControl(new maplibregl.NavigationControl());
-  map.addControl(new maplibregl.ScaleControl());
-
-  document.getElementById('opacity').addEventListener('input', (e) => {
-    map.setPaintProperty('hazard', 'raster-opacity', e.target.value / 100);
-  });
-
-  map.on('click', async (ev) => {
-    const out = document.getElementById('readout');
-    const z = Math.min(tj.maxzoom, Math.max(tj.minzoom, Math.floor(map.getZoom())));
-    const px = await readPixel(tmpl, ev.lngLat.lng, ev.lngLat.lat, z);
-    if (!px) { out.textContent = 'タイルが取得できませんでした。'; return; }
-
-    const head = `ZL${px.z} / タイル ${px.x},${px.y} / 画素 ${px.i},${px.j}<br>`
-      + `RGBA = (${px.r}, ${px.g}, ${px.b}, ${px.a})<br>`;
-    if (px.a === 0) { out.innerHTML = head + '<b>無効値（浸水なし・範囲外）</b>'; return; }
-
-    if (dp.tile_type === 'palette') {
-      const items = legend.items || legend;
-      const hit = items.find(it => it.r === px.r && it.g === px.g && it.b === px.b);
-      const pv = ((px.r << 16) + (px.g << 8) + px.b).toString(16).toUpperCase().padStart(6, '0');
-      out.innerHTML = head + `ピクセル値 = <code>${pv}</code><br>`
-        + (hit ? `<b>${hit.title}</b>` : '<b>凡例に無い色</b>（仕様違反）');
-    } else {
-      const rp = px.r < 128 ? px.r : px.r - 256;
-      const v = dp.numeric.factor * (65536 * rp + 256 * px.g + px.b) + dp.numeric.offset;
-      out.innerHTML = head + `<b>${v.toFixed(2)} ${dp.numeric.unit}</b>`;
-    }
-  });
-})();
-</script>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
