@@ -43,6 +43,7 @@ load_config() {
   NUM_FACTOR=0.01               # 数値PNGの係数 f
   NUM_OFFSET=0                  # 数値PNGのオフセット o
   NUM_UNIT="m"
+  SRC_ENCODING="auto"           # 入力 DBF の文字コード。auto なら指定の無いものを CP932 と仮定
   MAKEVALID="true"              # ogr2ogr -makevalid を使うか
   PROCESSES=8
   TILE_URL=""                   # tiles.json に書く URL テンプレート
@@ -95,6 +96,55 @@ require_cmd() {
 require_python_gdal() {
   python3 -c "from osgeo import gdal" 2>/dev/null \
     || die "Python の GDAL バインディング (osgeo) が無い"
+}
+
+# ---- 入力の文字コード -------------------------------------------------------
+
+# シェープファイルの DBF の文字コードは、.cpg ファイルか DBF ヘッダの LDID
+# （29 バイト目）で示される。国土数値情報は LDID=19（Shift-JIS）が入っているので
+# GDAL が正しく読む。一方、電子化ガイドラインの MAXALL シェープは LDID=0（指定なし）で
+# .cpg も無く、GDAL は日本語のフィールド名を生バイトのまま返す。属性名が
+# `浸水深` ではなく `\udc90Z...` になり、VALUE_FIELD の指定が一致しなくなる
+# （石川県の公開データで実際に踏んだ）。
+#
+# 指定がまったく無いときだけ CP932 を仮定する。日本語のハザードデータでは
+# 事実上これで正しく、指定があるデータには触らないので既存の入力を壊さない。
+resolve_src_encoding() {
+  local mode="${SRC_ENCODING:-auto}"
+  if [[ "$mode" != "auto" ]]; then
+    [[ -n "$mode" ]] && { export SHAPE_ENCODING="$mode"; log "SHAPE_ENCODING=$mode（設定で明示指定）"; }
+    return 0
+  fi
+
+  local enc
+  enc="$(list_inputs "$SRC_DIR" "$SRC_PATTERN" | python3 -c '
+import os, sys
+
+for raw in sys.stdin.buffer.read().split(b"\0"):
+    if not raw:
+        continue
+    path = os.fsdecode(raw)
+    stem, ext = os.path.splitext(path)
+    if ext.lower() != ".shp":
+        continue
+    # .cpg があれば GDAL がそれを見るので触らない
+    if any(os.path.exists(stem + e) for e in (".cpg", ".CPG")):
+        break
+    dbf = next((stem + e for e in (".dbf", ".DBF") if os.path.exists(stem + e)), None)
+    if not dbf:
+        break
+    with open(dbf, "rb") as f:
+        f.seek(29)
+        ldid = f.read(1)
+    if ldid and ldid[0] == 0:
+        print("CP932")
+    break
+')" || return 0
+
+  if [[ "$enc" == "CP932" ]]; then
+    export SHAPE_ENCODING="CP932"
+    log "DBF に文字コードの指定が無いため SHAPE_ENCODING=CP932 を仮定する"
+  fi
 }
 
 # 入力ファイルを NUL 区切りで列挙する（空白・日本語のファイル名に耐える）

@@ -40,6 +40,12 @@ FIELD_HINTS = [
     ("A31b_101", "浸水深ランク（計画規模）"),
     ("A31b_301", "浸水継続時間ランク"),
     ("A31b_401", "危険区域区分"),
+    # 電子化ガイドラインの MAXALL（最大包絡）シェープ. 属性名は日本語で、
+    # 浸水深・標高・流速が同居する。DBF が CP932 なので SHAPE_ENCODING が要る
+    # （common.sh が設定する）。石川県の公開データで確認。
+    ("浸水深", "浸水深（実数値・m）"),
+    ("浸水深ﾗﾝｸ", "浸水深ランク"),
+    ("浸水深ランク", "浸水深ランク"),
     # 電子化ガイドラインのツールが出力する GIS データで広く見られる名前
     ("GRIDCODE", "ランク"),
     ("gridcode", "ランク"),
@@ -50,8 +56,15 @@ FIELD_HINTS = [
     ("DEPTH", "浸水深"),
 ]
 
-# 除外する属性名 (ID や座標など、値ではないもの)
-FIELD_DENY = {"id", "fid", "objectid", "shape_area", "shape_leng", "shape_length"}
+# 除外する属性名 (ID や座標など、値ではないもの).
+# MAXALL シェープの先頭属性は MESH（メッシュコード, Integer64）で、
+# 値が百万種類あるため「数値型で値が変化する属性」の推定に引っかかる。
+# 除外しないとメッシュコードを浸水深として符号化した壊れたタイルが黙って出来る。
+FIELD_DENY = {
+    "id", "fid", "objectid", "shape_area", "shape_leng", "shape_length",
+    "mesh", "meshcode", "mesh_code", "メッシュ", "メッシュコード",
+    "標高", "地盤高", "流速",
+}
 
 # 細分メッシュ (共通編 表9 / 表10). 1辺の長さ, 緯度差(秒), 経度差(秒)
 SUBDIVIDED_MESH = [
@@ -340,7 +353,14 @@ def inspect_file(path, value_field=None, value_kind=None, sample_limit=200000):
         "value_max": max(vals) if vals else None,
         "value_distinct": len({v for v in vals}),
         "rank_histogram": {str(int(k)): v for k, v in sorted(hist.items())} if hist else None,
-        "null_count": count - len(vals),
+        # 属性値は先頭 sample_limit 件しか読まない（数百万フィーチャの入力があるため）。
+        # NULL 件数・値域・種類数はいずれも「読んだ範囲での」値なので、母数は
+        # 全フィーチャ数ではなく実際に読んだ件数で数える。全件を母数にすると、
+        # 打ち切った分がまるごと NULL として計上される（石川県の MAXALL は
+        # 139 万件で、NULL 0 件なのに 119 万件 NULL と報告されていた）。
+        "value_sampled": len(values_by_field[picked]),
+        "value_truncated": len(values_by_field[picked]) < count,
+        "null_count": len(values_by_field[picked]) - len(vals),
         "mesh": mesh,
     }
 
@@ -408,12 +428,17 @@ def build_report(result):
         e = f["extent"]
         a(f"- 範囲: {e['minx']:.5f}, {e['miny']:.5f} 〜 {e['maxx']:.5f}, {e['maxy']:.5f}")
         a(f"- 属性: {', '.join('%s (%s)' % (x['name'], x['type']) for x in f['fields'])}")
+        scope = (f"先頭 {f['value_sampled']:,} 件を読んだ範囲"
+                 if f.get("value_truncated") else "全件")
         a(f"- 値属性 `{f['value_field']}` ({f['value_field_type']}): "
-          f"{f['value_distinct']} 種類 / NULL {f['null_count']} 件")
+          f"{f['value_distinct']} 種類 / NULL {f['null_count']} 件（{scope}）")
         if f["rank_histogram"]:
             a(f"- ランク別件数: {f['rank_histogram']}")
         else:
-            a(f"- 値の範囲: {f['value_min']} 〜 {f['value_max']}")
+            a(f"- 値の範囲: {f['value_min']} 〜 {f['value_max']}（{scope}）")
+        if f.get("value_truncated"):
+            a("  - ※ 値域は読んだ範囲のもの。タイルに書く値域は Step 4 が"
+              "ラスター全体から取り直すので、こことは一致しないことがある")
         if f["mesh"]:
             m = f["mesh"]
             matched = m["matched"]["name"] if m["matched"] else "規定の細分メッシュに一致せず"

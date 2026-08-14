@@ -1,0 +1,29 @@
+# 例4: 同じ実数値データ → パレットPNG
+#
+# ishikawa-saigawa-numeric.conf.example と入力はまったく同じ。
+# 違いは TILE_TYPE を明示していることと RANK_DEF を足したことだけで、
+# 「実数値ならどちらの形式も選べる」ことの実例になっている。
+#
+# 数値PNG は画素から実数（例: 2.34 m）が戻るが、色に意味が無いので地図としては
+# 読めない。パレットPNG は色で読めるが、しきい値で分類した時点で実数は失われ、
+# 「1.0〜3.0m未満」までしか戻らない。用途で選ぶ。
+
+DATASET_ID="ishikawa-saigawa-palette"
+SRC_DIR="data/ishikawa-saigawa"
+
+SRC_SRS="auto"
+VALUE_FIELD="auto"                  # → 浸水深
+VALUE_KIND="auto"                   # → depth
+MESH_SIZE="auto"                    # → 5mメッシュ
+SRC_ENCODING="auto"                 # → CP932（DBF に指定が無いため）
+
+TILE_TYPE="palette"                 # ← 明示指定（auto なら numeric になる）
+RANK_DEF="colors/water-depth-8rank.json"
+
+MIN_ZOOM=9
+MAX_ZOOM="auto"                     # → 18
+
+DESCRIPTION="洪水浸水想定区域（想定最大規模）犀川 — 実数値を8ランクに分類したパレットPNGタイル"
+ATTRIBUTION="石川県 洪水浸水想定区域図オープンデータ（犀川・想定最大規模）"
+
+FETCH_URL="https://www.pref.ishikawa.lg.jp/kasen/sinsui-m/documents/1700060001_01maxall.zip"

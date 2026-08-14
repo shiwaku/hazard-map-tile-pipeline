@@ -34,8 +34,8 @@ jobs:
       DATASETS: >-
         ksj-flood-ujigawa
         ksj-duration-ujigawa
-        fukushima-depth-numeric
-        fukushima-depth-palette
+        ishikawa-saigawa-numeric
+        ishikawa-saigawa-palette
     steps:
       - uses: actions/checkout@v4
 

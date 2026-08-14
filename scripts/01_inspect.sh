@@ -8,6 +8,7 @@ load_config "${1:-}"
 require_python_gdal
 
 [[ -d "$SRC_DIR" ]] || die "入力ディレクトリが無い: $SRC_DIR"
+resolve_src_encoding
 mkdir -p "$INSPECT_DIR"
 
 args=(

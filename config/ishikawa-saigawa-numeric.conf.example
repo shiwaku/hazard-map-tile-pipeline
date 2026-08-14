@@ -1,0 +1,50 @@
+# 例3: 洪水浸水想定区域（想定最大規模）の浸水深の実数値 → 数値PNG
+#
+# 石川県「洪水浸水想定区域図オープンデータ」の犀川（想定最大規模）。
+# 浸水想定区域図データ電子化ガイドラインの MAXALL（最大包絡）形式そのままで、
+# 属性 `浸水深` に実数（m）が入る。5mメッシュ・EPSG:4612（JGD2000）。
+# `標高` `流速` `浸水深ﾗﾝｸ` `流速ﾗﾝｸ` も同居している。
+#
+# 洪水で実数値が手に入る数少ない公開データ:
+#   国土数値情報（A31a）も、多くの都道府県公開分も、浸水深はランクコードでしか
+#   持っていない。実数値の原典は河川管理者が持つ MAXALL で、国管理河川（利根川・
+#   荒川など大河川の本川）の分は公開されていない。都道府県が自らの管理河川について
+#   MAXALL をそのまま公開している例があり、これはその 1 つ。
+#
+# 出典URL: https://www.pref.ishikawa.lg.jp/kasen/sinsui-m/opendata.html
+# ライセンス: 県が「オープンデータ」として公開しているが、CC 等の明示は無い
+#             （県のオープンデータの定義は「営利・非営利を問わず二次利用可能」）。
+#             出典を明記して利用する。
+
+DATASET_ID="ishikawa-saigawa-numeric"
+SRC_DIR="data/ishikawa-saigawa"
+
+SRC_SRS="auto"                      # → EPSG:4612
+VALUE_FIELD="auto"                  # → 浸水深（FIELD_HINTS に登録済み）
+VALUE_KIND="auto"                   # → depth
+TILE_TYPE="auto"                    # → numeric（palette も選べる。下のコメント参照）
+MESH_SIZE="auto"                    # → 5mメッシュ（頂点間隔 経度0.2232″×緯度0.1512″）
+
+# DBF に文字コードの指定が無い（LDID=0・.cpg 無し）ので CP932 を仮定させる。
+# auto のままでも common.sh が同じ判定をするが、根拠を設定にも残しておく。
+SRC_ENCODING="auto"
+
+# 係数 0.01 は cm 単位で保持する意味。24 ビット符号付き整数（±83886.07 @ f=0.01）
+# に対して浸水深の桁は十分に余る。
+NUM_FACTOR=0.01
+NUM_OFFSET=0
+NUM_UNIT="m"
+
+MIN_ZOOM=9
+MAX_ZOOM="auto"                     # → 18（5mメッシュのネイティブZL15＋3）
+
+DESCRIPTION="洪水浸水想定区域（想定最大規模）犀川 — 浸水深の実数値を保持する数値PNGタイル"
+ATTRIBUTION="石川県 洪水浸水想定区域図オープンデータ（犀川・想定最大規模）"
+
+FETCH_URL="https://www.pref.ishikawa.lg.jp/kasen/sinsui-m/documents/1700060001_01maxall.zip"
+
+# 同じデータをパレットPNGにする場合は、この 2 行に差し替える:
+#   TILE_TYPE="palette"
+#   RANK_DEF="colors/water-depth-8rank.json"
+# 実数値の浸水深はしきい値でランクに分類できるので、どちらの出力も選べる。
+# 逆にランクデータからは実数値を復元できないので、そちらは numeric を選べない。
