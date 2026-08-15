@@ -37,7 +37,7 @@ jobs:
         ishikawa-saigawa-numeric
         ishikawa-saigawa-palette
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # gdal-bin: ogr2ogr / gdal_rasterize / gdalwarp / gdaldem / gdal2tiles.py
       # python3-gdal: tools/*.py が使う osgeo バインディング
@@ -55,9 +55,9 @@ jobs:
           gdalinfo --version
           python3 -c "from osgeo import gdal; import numpy, PIL; print(f'osgeo {gdal.__version__} / numpy {numpy.__version__} / Pillow {PIL.__version__}')"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: viewer/package-lock.json
 
@@ -93,7 +93,7 @@ jobs:
       - name: サイトを組み立てる
         run: ./scripts/build_site.sh _site
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
@@ -105,4 +105,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
